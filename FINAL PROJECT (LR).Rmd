@@ -1,0 +1,118 @@
+```{r}
+setwd("C:/Users/Guill/Documents/Data science/R folder/data")
+
+```
+```{r}
+data <- read.csv("ds_salaries.csv", stringsAsFactors = FALSE, check.names = FALSE)
+
+```
+```{r}
+cat("Columns in the file:\n")
+print(colnames(data))
+```
+```{r}
+cols_lower <- tolower(trimws(colnames(data)))
+entry_idx  <- which(grepl("entry", cols_lower))[1]
+early_idx  <- which(grepl("early", cols_lower))[1]
+mid_idx    <- which(grepl("mid", cols_lower))[1]
+senior_idx <- which(grepl("senior", cols_lower))[1]
+```
+```{r}
+cat("\nSalary columns found:\n")
+cat("Entry  →", colnames(data)[entry_idx], "\n")
+cat("Early  →", colnames(data)[early_idx], "\n")
+cat("Mid    →", colnames(data)[mid_idx], "\n")
+cat("Senior →", colnames(data)[senior_idx], "\n")
+```
+```{r}
+salary_indices <- c(entry_idx, early_idx, mid_idx, senior_idx)
+data[, salary_indices] <- lapply(data[, salary_indices, drop = FALSE], function(x) {
+  as.numeric(gsub("[\\$,]", "", trimws(as.character(x))))
+})
+
+```
+```{r}
+data$high_paying <- ifelse(data[[senior_idx]] >= 80000, 1, 0)
+
+```
+```{r}
+feature_cols <- c(entry_idx, early_idx)
+X <- as.matrix(data[, feature_cols])
+y <- data$high_paying
+
+```
+```{r}
+X <- cbind(1, X)
+colnames(X) <- c("intercept", "entry", "early")
+m <- nrow(X)
+```
+```{r}
+mu    <- colMeans(X[, 2:3])
+sigma <- apply(X[, 2:3], 2, sd)
+X_norm <- X
+X_norm[, 2:3] <- scale(X[, 2:3])
+```
+```{r}
+sigmoid <- function(z) 1 / (1 + exp(-z))
+
+```
+```{r}
+costFunction <- function(theta, X, y) {
+  h <- sigmoid(X %*% theta)
+  h <- pmax(h, 1e-15); h <- pmin(h, 1 - 1e-15)
+  J    <- (-1/m) * sum(y * log(h) + (1-y) * log(1-h))
+  grad <- (1/m) * t(X) %*% (h - y)
+  list(cost = J, gradient = as.vector(grad))
+}
+```
+```{r}
+result <- optim(par = rep(0, 3),
+                fn = function(th) costFunction(th, X_norm, y)$cost,
+                gr = function(th) costFunction(th, X_norm, y)$gradient,
+                method = "BFGS",
+                control = list(maxit = 1000))
+```
+```{r}
+theta <- result$par
+cat(sprintf("\nOptimized theta: %.6f  %.6f  %.6f\n", theta[1], theta[2], theta[3]))
+cat("Final cost:", round(result$value, 6), "\n")
+```
+```{r}
+pos <- y == 1
+neg <- y == 0
+
+png("decision_boundary.png", width = 1000, height = 700)
+plot(X[pos, 2], X[pos, 3], col = "black", pch = "+", cex = 2,
+     xlab = "Entry-level salary ($)", ylab = "Early-career salary ($)",
+     main = "Data Science Salaries Europe – Logistic Regression")
+points(X[neg, 2], X[neg, 3], col = "gold", pch = "o", cex = 2, lwd = 2)
+```
+```{r}
+# --------------------- PLOT DIRECTLY IN RSTUDIO (no file) ---------------------
+pos <- y == 1
+neg <- y == 0
+
+plot(X[pos, 2], X[pos, 3], 
+     col = "black", pch = "+", cex = 2.5, lwd = 3,
+     xlab = "Entry-level salary ($)", 
+     ylab = "Early-career salary ($)",
+     main = "Data Science Salaries in Europe – Logistic Regression",
+     xlim = range(X[,2]), ylim = range(X[,3]))
+
+points(X[neg, 2], X[neg, 3], col = "#FFD700", pch = 19, cex = 2.5)
+
+if(abs(theta[3]) > 1e-8) {
+  x1_plot <- seq(min(X[,2]), max(X[,2]), length.out = 1000)
+  x1_norm <- (x1_plot - mu[1]) / sigma[1]
+  x2_norm <- -(theta[1] + theta[2] * x1_norm) / theta[3]
+  x2_plot <- x2_norm * sigma[2] + mu[2]
+  valid <- is.finite(x2_plot)
+  lines(x1_plot[valid], x2_plot[valid], col = "blue", lwd = 5)
+}
+
+legend("topleft", 
+       legend = c("High-paying (≥ $80k senior)", "Regular", "Decision boundary"),
+       col = c("black", "#FFD700", "blue"),
+       pch = c("+", 19, NA), lty = c(NA, NA, 1), lwd = c(3, NA, 5),
+       pt.cex = 2.5, cex = 1.3, bg = "white")
+```
